@@ -1,33 +1,51 @@
-# phpstorm project files
+# =========================
+# Yii2 / PHP project
+# =========================
+
+# IDE
 .idea
-
-# netbeans project files
 nbproject
-
-# zend studio for eclipse project files
 .buildpath
 .project
 .settings
 
-# windows thumbnail cache
+# OS files
 Thumbs.db
-
-# composer vendor dir
-/vendor
-
-# composer itself is not needed
-composer.phar
-
-# Mac DS_Store Files
 .DS_Store
 
-# phpunit itself is not needed
+# Composer
+/vendor
+composer.phar
+
+# PHP tools
 phpunit.phar
-# local phpunit config
 /phpunit.xml
 
-tests/_output/*
-tests/_support/_generated
-
-#vagrant folder
+# Vagrant
 /.vagrant
+
+# =========================
+# IMPORTANT (เพิ่มใหม่)
+# =========================
+
+# uploads (สำคัญที่สุด ❗)
+web/uploads/
+uploads/
+
+# runtime / cache
+runtime/
+web/assets/
+assets/
+
+# logs
+*.log
+logs/
+
+# environment config
+.env
+.env.*
+
+# backup files
+*.bak
+*.swp
+*.tmp

@@ -1,1 +1,0 @@
-hospcode|vid|date_start|date_finish|comactivity|provider|d_update

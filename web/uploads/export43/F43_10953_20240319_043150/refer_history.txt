@@ -1,3 +1,0 @@
-hospcode|referid|referid_province|pid|seq|an|referid_origin|hospcode_origin|datetime_serv|datetime_admit|datetime_refer|clinic_refer|hosp_destination|chiefcomp|physicalexam|diagfirst|diaglast|pstatus|ptype|emergency|ptypedis|causeout|request|provider|d_update
-10953|477||15835|300924||||20231207090901||20231207101022|01500|10953|ผู้ป่วยความดันโลหิตสูงมารับยาต่อเนื่อง|GA : good consciousness , not pale , no Jx , Lung: clear , heart : no murmur||Essential (primary) hypertension| .ไม่ระบุฯ|1|1|99|1||3341100097106|20231207100830
-10953|479||9325|302528||||20231226085932||20231226090507|01500|10953|มารับบริการฝากครรภ์ ANC ช่วงที่ 1|||Dental examination| .ไม่ระบุฯ|1|1|99|1||3341100097106|20231227090440
