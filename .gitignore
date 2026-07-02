@@ -49,3 +49,5 @@ logs/
 *.bak
 *.swp
 *.tmp
+# ignore all config folder
+config/
