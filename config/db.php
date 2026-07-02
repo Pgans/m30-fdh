@@ -1,14 +1,16 @@
 <?php
 
-return [
+ return [
     'class' => 'yii\db\Connection',
-    'dsn' => 'mysql:host=192.168.200.2;dbname=eclaimdb',
-    'username' => 'root',
-    'password' => '1234',
-    'charset' => 'utf8',
+     'dsn' => 'mysql:host=192.168.200.9;dbname=mdevices_a',
+     'username' => 'm301',
+    'password' => '@#okp=k9iu',
+     'charset' => 'utf8',
 
-    // Schema cache options (for production environment)
-    //'enableSchemaCache' => true,
-    //'schemaCacheDuration' => 60,
-    //'schemaCache' => 'cache',
+   // return [
+   //     'class' => 'yii\db\Connection',
+    //    'dsn' => 'mysql:host=localhost;dbname=eclaim_yoo',
+     //   'username' => 'root',
+     //   'password' => 'okp=k9iu',
+       // 'charset' => 'utf8',
 ];

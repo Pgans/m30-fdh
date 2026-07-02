@@ -1,0 +1,889 @@
+<?php
+
+namespace app\controllers;
+
+use yii;
+use yii\helpers\FileHelper;
+use ZipArchive;
+use yii\helpers\Json;
+use yii\web\UploadedFile;
+use yii\httpclient\Client;
+use yii\httpclient\Request;
+use yii\helpers\BaseFileHelper;
+use yii\web\Controller;
+use yii\web\Response;
+use yii\db\Exception;
+use yii\web\NotFoundHttpException;
+use yii\data\ArrayDataProvider;
+
+
+class F16telemedController extends \yii\web\Controller
+{
+   public function actionIndex()
+{
+    // =====================================================
+    // รับค่าวันที่
+    // =====================================================
+    $date1x = Yii::$app->request->get('date1', date('Y-m-d'));
+    $date2x = Yii::$app->request->get('date2', date('Y-m-d'));
+
+    $date1 = date('Y-m-d 00:00:00', strtotime($date1x));
+    $date2 = date('Y-m-d 23:59:59', strtotime($date2x));
+
+    // =====================================================
+    // Filter Status
+    // all = ทั้งหมด
+    // success = ส่งแล้ว
+    // waiting = รอส่ง
+    // =====================================================
+    $status = Yii::$app->request->get('status', 'all');
+
+    $whereStatus = "";
+
+    if ($status == 'success') {
+
+        $whereStatus = "
+            AND (
+                log.messagecode IS NOT NULL
+                AND TRIM(log.messagecode) <> ''
+            )
+        ";
+
+    } elseif ($status == 'waiting') {
+
+        $whereStatus = "
+            AND (
+                log.messagecode IS NULL
+                OR TRIM(log.messagecode) = ''
+            )
+        ";
+    }
+
+    // =====================================================
+    // SQL หลัก
+    // =====================================================
+    $sqlData = "
+        SELECT @n := @n + 1 AS No, data.*
+        FROM
+        (
+            SELECT
+                DATE_FORMAT(o.reg_datetime, '%Y-%m-%d %H:%i') AS regdate,
+
+                o.visit_id,
+                o.hn,
+
+                CONCAT(
+                    CASE
+                        WHEN p.PRENAME != '' THEN TRIM(p.PRENAME)
+
+                        WHEN TIMESTAMPDIFF(YEAR, p.BIRTHDATE, NOW()) < 20
+                             AND p.sex = '1'
+                             AND p.MARRIAGE = '4'
+                        THEN 'สามเณร'
+
+                        WHEN TIMESTAMPDIFF(YEAR, p.BIRTHDATE, NOW()) >= 20
+                             AND p.sex = '1'
+                             AND p.MARRIAGE = '4'
+                        THEN 'พระภิกษุ'
+
+                        WHEN TIMESTAMPDIFF(YEAR, p.BIRTHDATE, NOW()) < 15
+                             AND p.sex = '1'
+                        THEN 'เด็กชาย'
+
+                        WHEN TIMESTAMPDIFF(YEAR, p.BIRTHDATE, NOW()) >= 15
+                             AND p.sex = '1'
+                        THEN 'นาย'
+
+                        WHEN TIMESTAMPDIFF(YEAR, p.BIRTHDATE, NOW()) < 15
+                             AND p.sex = '2'
+                        THEN 'เด็กหญิง'
+
+                        WHEN TIMESTAMPDIFF(YEAR, p.BIRTHDATE, NOW()) >= 15
+                             AND p.sex = '2'
+                             AND p.MARRIAGE = '1'
+                        THEN 'นางสาว'
+
+                        ELSE 'นาง'
+                    END,
+
+                    TRIM(p.FNAME),
+                    ' ',
+                    TRIM(p.LNAME)
+
+                ) AS fullname,
+
+                TIMESTAMPDIFF(
+                    YEAR,
+                    p.BIRTHDATE,
+                    o.REG_DATETIME
+                ) AS age,
+
+                p.cid,
+
+                icd1.ICD10_TM AS Diagx,
+
+                LEFT(
+                    GROUP_CONCAT(
+                        DISTINCT TRIM(icd.ICD10_TM)
+                    ),
+                    30
+                ) AS Diag,
+
+                e.unit_name,
+
+                f.INSCL_NAME AS inscl,
+
+                '50.00' AS amount,
+
+                g.hospmain,
+                g.hospsub,
+
+                log.messagecode,
+
+                IFNULL(cv.claimcode, '') AS endpoint,
+                IFNULL(ak.claimcode, '') AS claimcode
+
+            FROM opd_visits o
+
+            INNER JOIN cid_hn c
+                ON o.HN = c.HN
+
+            INNER JOIN population p
+                ON c.CID = p.CID
+                AND LEFT(p.cid,5) <> '00000'
+
+            INNER JOIN opd_diagnosis d
+                ON d.visit_id = o.visit_id
+                AND d.is_cancel = 0
+
+            LEFT JOIN icd10new icd
+                ON icd.icd10 = d.icd10
+                AND icd.icd10 <> ''
+
+            INNER JOIN opd_diagnosis d1
+                ON d1.visit_id = o.visit_id
+                AND d1.is_cancel = 0
+                AND d1.dxt_id = 1
+
+            LEFT JOIN icd10new icd1
+                ON icd1.icd10 = d1.icd10
+                AND icd1.icd10 <> ''
+
+            INNER JOIN service_units e
+                ON o.UNIT_REG = e.unit_id
+
+            LEFT JOIN main_inscls f
+                ON o.INSCL = f.INSCL
+
+            LEFT JOIN uc_inscl g
+                ON c.CID = g.CID
+                AND (
+                    g.date_abort > DATE(o.REG_DATETIME)
+                    OR DAY(g.DATE_ABORT) = 0
+                )
+                AND TRIM(g.hospmain) <> ''
+
+            LEFT JOIN authen_kiosk ak
+                ON ak.visit_id = o.visit_id
+
+            LEFT JOIN log_fdh_opd_ck log
+                ON log.visit_id = o.visit_id
+
+            LEFT JOIN close_visits cv
+                ON cv.visit_id = o.visit_id
+
+            WHERE o.IS_CANCEL = 0
+
+            AND o.REG_DATETIME
+                BETWEEN '$date1' AND '$date2'
+
+            AND (
+                o.UNIT_REG IN (
+                    '63','68','70','71',
+                    '75','81','82','83',
+                    '84','85','86'
+                )
+
+                OR
+
+                o.UNIT_ID IN (
+                    '63','68','70','71',
+                    '75','81','82','83',
+                    '84','85','86'
+                )
+            )
+
+            AND o.INSCL IN (
+                '03','04','33','00','23'
+            )
+
+            AND o.visit_id NOT IN (
+                SELECT ipd_reg.visit_id
+                FROM ipd_reg
+                WHERE ipd_reg.is_cancel = 0
+            )
+
+            $whereStatus
+
+            GROUP BY o.visit_id
+
+        ) data,
+        (SELECT @n := 0) init
+
+        ORDER BY No DESC
+    ";
+
+    $rawData = Yii::$app->db2
+        ->createCommand($sqlData)
+        ->queryAll();
+
+    // =====================================================
+    // Dashboard Count
+    // ใช้ข้อมูลเดียวกับ GridView
+    // =====================================================
+    $totalMonth = count($rawData);
+
+    $claimedMonth = 0;
+    $remainingMonth = 0;
+
+    foreach ($rawData as $row) {
+
+        if (
+            isset($row['messagecode']) &&
+            trim($row['messagecode']) != ''
+        ) {
+
+            $claimedMonth++;
+
+        } else {
+
+            $remainingMonth++;
+        }
+    }
+
+    // =====================================================
+    // ผ่านวันนี้
+    // =====================================================
+    $sqlCount1 = "
+        SELECT COUNT(*) AS amount
+        FROM log_fdh_opd_ck v
+        WHERE v.users = 'telemed'
+        AND v.messagecode <> ''
+        AND DATE(v.d_update) = CURDATE()
+    ";
+
+    $amount = Yii::$app->db2
+        ->createCommand($sqlCount1)
+        ->queryScalar();
+
+    // =====================================================
+    // ไม่ผ่านวันนี้
+    // =====================================================
+    $sqlCount2 = "
+        SELECT COUNT(*) AS amountx
+        FROM log_fdh_opd_ck v
+        WHERE v.users = 'telemed'
+        AND (
+            v.messagecode IS NULL
+            OR v.messagecode = ''
+        )
+        AND DATE(v.d_update) = CURDATE()
+    ";
+
+    $amountx = Yii::$app->db2
+        ->createCommand($sqlCount2)
+        ->queryScalar();
+
+    // =====================================================
+    // รายการผ่าน
+    // =====================================================
+    $sqlPass = "
+        SELECT
+            l.id,
+            l.visit_id,
+            l.pid,
+            l.messagecode,
+            l.response,
+            l.users,
+            l.d_update
+
+        FROM log_fdh_opd_ck l
+
+        WHERE DATE(l.d_update) = CURDATE()
+
+        AND l.messagecode <> ''
+
+        AND l.users = 'telemed'
+
+        ORDER BY l.d_update DESC
+    ";
+
+    $passData = Yii::$app->db2
+        ->createCommand($sqlPass)
+        ->queryAll();
+
+    $passProvider = new ArrayDataProvider([
+        'allModels' => $passData,
+        'pagination' => [
+            'pageSize' => 300
+        ],
+    ]);
+
+    // =====================================================
+    // รายการ Error
+    // =====================================================
+    $sqlError = "
+        SELECT
+            l.id,
+            l.visit_id,
+            l.pid,
+            l.messagecode,
+            l.response,
+            l.users,
+            l.d_update
+
+        FROM log_fdh_opd_ck l
+
+        WHERE l.d_update
+            BETWEEN DATE_SUB(NOW(), INTERVAL 1 DAY)
+            AND NOW()
+
+        AND (
+            l.messagecode IS NULL
+            OR TRIM(l.messagecode) = ''
+        )
+
+        AND l.users = 'telemed'
+
+        ORDER BY l.d_update DESC
+    ";
+
+    $errorData = Yii::$app->db2
+        ->createCommand($sqlError)
+        ->queryAll();
+
+    $errorProvider = new ArrayDataProvider([
+        'allModels' => $errorData,
+        'pagination' => [
+            'pageSize' => 350
+        ],
+    ]);
+
+    // =====================================================
+    // DataProvider
+    // =====================================================
+    $dataProvider = new ArrayDataProvider([
+        'allModels' => $rawData,
+        'pagination' => [
+            'pageSize' => 1000
+        ],
+    ]);
+
+    // =====================================================
+    // Render
+    // =====================================================
+    return $this->render('index', [
+
+        'dataProvider'   => $dataProvider,
+
+        'passProvider'   => $passProvider,
+
+        'errorProvider'  => $errorProvider,
+
+        'amount'         => $amount,
+
+        'amountx'        => $amountx,
+
+        'date1'          => $date1x,
+        'date2'          => $date2x,
+
+        'status'         => $status,
+
+        'totalMonth'     => $totalMonth,
+
+        'claimedMonth'   => $claimedMonth,
+
+        'remainingMonth' => $remainingMonth,
+    ]);
+}
+    private $visit;
+    private $hn;
+    #############################################################################################
+    public function actionData()
+    {
+        $vn = Yii::$app->request->post('chkDel', []);
+
+        foreach ($vn as $r) {
+            $hn = substr($r, 10);
+            $visit = substr($r, 0, 10);
+            $visits[] = $visit;
+            $db2 = \Yii::$app->db2;
+
+            $baseDirectory = 'uploads/fdh_opd/';
+            $mode = 0777;
+
+            $tables = ['adp', 'ins', 'odx', 'opd', 'pat', 'cha', 'cht'];
+			
+			/*
+            foreach ($tables as $table) {
+                $query = "SELECT main_query FROM fdh_telemed WHERE main_table = '$table'";
+                $results = $db2->createCommand($query)->queryAll();
+			*/
+				##################################################################
+			foreach ($tables as $table) {
+			// ตรวจสอบเงื่อนไขพิเศษ
+			if ($table === 'pat') {
+				$query = "SELECT main_query FROM fdh_pat WHERE main_table = 'pat'";
+				$results = $db2->createCommand($query)->queryAll();
+			} else {
+				// ตรวจสอบว่ามีใน fdh_ins หรือไม่
+				$queryIns = "SELECT main_query FROM fdh_ins WHERE main_table = :table";
+				$results = $db2->createCommand($queryIns)
+					->bindValue(':table', $table)
+					->queryAll();
+
+				// ถ้าไม่มีข้อมูลใน fdh_ins ให้ใช้จาก fdh_telemed
+				if (empty($results)) {
+					$queryHerb = "SELECT main_query FROM fdh_telemed WHERE main_table = :table";
+					$results = $db2->createCommand($queryHerb)
+						->bindValue(':table', $table)
+						->queryAll();
+				}
+			}
+		#############################################################################
+				
+                foreach ($results as $result) {
+                    $mainQueryResult = $result['main_query'];
+                    $mainQueryResult = str_replace('$visit', $visit, $mainQueryResult);
+                    $data = $db2->createCommand($mainQueryResult)->queryAll();
+                    $filePath = $baseDirectory . strtoupper($table) . '.txt';
+                    $header = $this->getHeaderForTable($table);
+                    $this->exportToTextFile($data, $filePath, $header);
+                }
+            }
+
+            $this->sendDataToAPI($visit, $hn);
+        }
+
+        // Store values in session
+        Yii::$app->session->set('visits', $visits);
+        Yii::$app->session->set('hn', $hn);
+        //Yii::$app->session->set('message_th', $message_th);
+        return $this->redirect(['index', 'visit' => $visit, 'hn' => $hn]);
+        // return $this->redirect(['index']);
+    }
+
+    private function getHeaderForTable($table)
+    {
+        switch ($table) {
+            case 'adp':
+                return ['HN', 'AN', 'DATEOPD', 'TYPE', 'CODE', 'QTY', 'RATE', 'SEQ', 'CAGCODE', 'DOSE', 'CA_TYPE', 'SERIALNO', 'TOTCOPAY', 'USE_STATUS', 'TOTAL', 'QTYDAY', 'TMLTCODE', 'STATUS1', 'BI', 'CLINIC', 'ITEMSRC', 'PROVIDER', 'GRAVIDA', 'GA_WEEK', 'DCIP/E_SCREEN', 'LMP'];
+            case 'cha':
+                return ['HN', 'AN', 'DATE', 'CHRGITEM', 'AMOUNT', 'PERSON_ID', 'SEQ'];
+            case 'cht':
+                return ['HN', 'AN', 'DATE', 'TOTAL', 'PAID', 'PTTYPE', 'PERSON_ID', 'SEQ', 'OPD_MEMO', 'INVOICE_NO', 'INVOICE_LT'];
+            case 'dru':
+                return ['HCODE', 'HN', 'AN', 'CLINIC', 'PERSON_ID', 'DATE_SERV', 'DID', 'DIDNAME', 'AMOUNT', 'DRUGPRICE', 'DRUGCOST', 'DIDSTD', 'UNIT', 'UNIT_PACK', 'SEQ', 'DRUGREMARK', 'PA_NO', 'TOTCOPAY', 'USE_STATUS', 'TOTAL', 'SIGCODE', 'SIGTEXT', 'PROVIDER'];
+            case 'ins':
+                return ['HN', 'INSCL', 'SUBTYPE', 'CID', 'HCODE', 'DATEEXP', 'HOSPMAIN', 'HOSPSUB', 'GOVCODE', 'GOVNAME', 'PERMITNO', 'DOCNO', 'OWNRPID', 'OWNNAME', 'AN', 'SEQ', 'SUBINSCL', 'RELINSCL', 'HTYPE'];
+            case 'odx':
+                return ['HN', 'DATEDX', 'CLINIC', 'DIAG', 'DXTYPE', 'DRDX', 'PERSON_ID', 'SEQ'];
+            case 'oop':
+                return ['HN', 'DATEOPD', 'CLINIC', 'OPER', 'DROPID', 'PERSON_ID', 'SEQ'];
+            case 'opd':
+                return ['HN', 'CLINIC', 'DATEOPD', 'TIMEOPD', 'SEQ', 'UUC', 'DETAIL', 'BTEMP', 'SBP', 'DBP', 'PR', 'RR', 'OPTYPE', 'TYPEIN', 'TYPEOUT'];
+            case 'orf':
+                return  ['HN', 'DATEOPD', 'CLINIC', 'REFER', 'REFERTYPE', 'SEQ', 'REFERDATE'];
+            case 'pat':
+                return ['HCODE', 'HN', 'CHANGWAT', 'AMPHUR', 'DOB', 'SEX', 'MARRIAGE', 'OCCUPA', 'NATION', 'PERSON_ID', 'NAMEPAT', 'TITLE', 'FNAME', 'LNAME', 'IDTYPE'];
+            case 'aer':
+                return ['HN', 'AN', 'DATEOPD', 'AUTHAE', 'AEDATE', 'AETIME', 'AETYPE', 'REFER_NO', 'REFMAINI', 'IREFTYPE', 'REFMAINO', 'OREFTYPE', 'UCAE', 'EMTYPE', 'SEQ', 'AESTATUS', 'DALERT', 'TALERT'];
+            default:
+                return [];
+        }
+    }
+
+private function exportToTextFile($data, $filePath, $header = [])
+{
+    $file = fopen($filePath, 'wb');
+    if (!empty($header)) {
+        fputcsv($file, $header, "|");
+    }
+    foreach ($data as $row) {
+        array_walk($row, function (&$value) {
+            $value = mb_convert_encoding($value, 'UTF-8', mb_detect_encoding($value));
+        });
+        fputcsv($file, $row, "|");
+    }
+    fclose($file);
+    $this->convertToWindowsCrLf($filePath);
+}
+
+private function convertToWindowsCrLf($filePath)
+    {
+        $content = file_get_contents($filePath);
+        $content = str_replace("\n", "\r\n", $content);
+        file_put_contents($filePath, $content);
+    }
+
+    private function sendDataToAPI($visit, $hn)
+{
+     $sqltoken = "SELECT MAX(token) as token30 FROM fdh_token WHERE staff_id = 'nim'";
+	// $sqltoken = "SELECT MAX(token) as token30 FROM fdh_token WHERE staff_id = 'thong'";
+    $data = Yii::$app->db2->createCommand($sqltoken)->queryOne();
+
+    if ($data && isset($data['token30'])) {
+        $token30 = $data['token30'];
+
+        $filePaths = [
+            __DIR__ . '/../web/uploads/fdh_opd/PAT.txt',
+            __DIR__ . '/../web/uploads/fdh_opd/INS.txt',
+            __DIR__ . '/../web/uploads/fdh_opd/OPD.txt',
+            __DIR__ . '/../web/uploads/fdh_opd/ADP.txt',
+            __DIR__ . '/../web/uploads/fdh_opd/ODX.txt',
+            __DIR__ . '/../web/uploads/fdh_opd/CHA.txt',
+            __DIR__ . '/../web/uploads/fdh_opd/CHT.txt',
+        ];
+// สร้าง HTTP client และส่งคำขอ ## https://fdh.moph.go.th/api/v2/data_hub/16_files  ***  https://uat-fdh.inet.co.th/api/v2/data_hub/16_files
+        $client = new Client();
+        $request = $client->createRequest()
+            ->setMethod('POST')
+            ->setUrl('https://fdh.moph.go.th/api/v2/data_hub/16_files')
+            ->addHeaders([
+                'Authorization' => 'Bearer ' . $token30,
+                'Content-Type' => 'multipart/form-data',
+            ]);
+
+        // Add files to the request
+        foreach ($filePaths as $filePath) {
+            if (file_exists($filePath)) {
+                $request->addFile('file', $filePath, ['content-type' => 'text/plain']);
+            }
+        }
+
+        // Add additional data to the request
+        $request->addData([
+            'key' => 'value',
+            'type' => 'txt',
+        ]);
+
+        // Send the request and get the response
+        $response = $request->send();
+        $responseData = json_decode($response->getContent(), true);
+
+        $message_th = isset($responseData['message_th']) ? $responseData['message_th'] : '';
+
+        // Check the status of the request
+        if ($response->isOk) {
+            Yii::$app->session->setFlash('success', 'ส่งข้อมูลสำเร็จ.');
+        } else {
+            $errorMessage = "Error: " . $response->getStatusCode() . " " . $response->getContent() . " สำหรับ visit: " . $visit;
+            Yii::$app->session->setFlash('error', $errorMessage);
+        }
+
+        // Read data from CHT.txt
+        $chtFilePath = __DIR__ . '/../web/uploads/fdh_opd/CHT.txt';
+        if (file_exists($chtFilePath)) {
+            $file = fopen($chtFilePath, 'r');
+            $header = fgetcsv($file, 0, "|"); // Read the header
+            while ($row = fgetcsv($file, 0, "|")) {
+                $rowData = array_combine($header, $row); // Combine header and row to associative array
+                $hn = $rowData['HN'];
+                $visit = $rowData['SEQ'];
+				$datereg = $rowData['DATE'];
+                // Prepare data for the API request
+                $postData = json_encode([
+                    "hcode" => "10953",
+                    "hn" => $hn,
+                    "seq" => $visit,
+                    "transaction_uid" => ""
+                ]);
+
+                // Initialize cURL
+                $curl = curl_init();
+                curl_setopt_array($curl, [
+                    CURLOPT_URL => 'https://fdh.moph.go.th/api/v1/ucs/track_trans',
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_SSL_VERIFYHOST => 0,
+                    CURLOPT_SSL_VERIFYPEER => 0,
+                    CURLOPT_ENCODING => '',
+                    CURLOPT_MAXREDIRS => 10,
+                    CURLOPT_TIMEOUT => 0,
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                    CURLOPT_CUSTOMREQUEST => 'POST',
+                    CURLOPT_POSTFIELDS => $postData,
+                    CURLOPT_HTTPHEADER => [
+                        "Content-Type: application/json",
+                        "Authorization: Bearer " . $token30
+                    ],
+                ]);
+
+                $response = curl_exec($curl);
+                curl_close($curl);
+
+                // Extract status_message_th from the response
+                $responseDecoded = json_decode($response, true);
+                $messages = isset($responseDecoded['data'][0]['status']) ? $responseDecoded['data'][0]['status'] : '';
+                $statusMessageTh = isset($responseDecoded['data'][0]['status_message_th']) ? $responseDecoded['data'][0]['status_message_th'] : '';
+
+                // Check if visit_id exists in the table
+                $logSQLCheck = "SELECT COUNT(*) FROM log_fdh_opd_ck WHERE visit_id = :visit_id";
+                $visitCount = Yii::$app->db2->createCommand($logSQLCheck)
+                    ->bindValue(':visit_id', $visit)
+                    ->queryScalar();
+
+               if ($visitCount > 0) {
+                        // Update if the visit exists
+                        $logSQLUpdate = "UPDATE log_fdh_opd_ck SET pid = :pid, messages = :messages, messagecode = :messagecode, response = :response,
+                         users = 'telemed', datereg = :datereg, d_update = NOW() WHERE visit_id = :visit_id";
+                        Yii::$app->db2->createCommand($logSQLUpdate)
+                            ->bindValue(':pid', $hn)
+                            ->bindValue(':messages', $messages)
+                            ->bindValue(':messagecode', $statusMessageTh)
+                            ->bindValue(':response', $response)
+                            ->bindValue(':visit_id', $visit)
+                            ->bindValue(':datereg', $datereg)
+                            ->execute();
+                    } else {
+                        // Insert if the visit does not exist
+                        $logSQLInsert = "INSERT INTO log_fdh_opd_ck (visit_id, pid, messages, messagecode, response, users, datereg, d_update) 
+                        VALUES (:visit_id, :pid, :messages, :messagecode, :response, 'telemed',:datereg ,NOW())";
+                        Yii::$app->db2->createCommand($logSQLInsert)
+                            ->bindValue(':visit_id', $visit)
+                            ->bindValue(':pid', $hn)
+                            ->bindValue(':messages', $messages)
+                            ->bindValue(':messagecode', $statusMessageTh)
+                            ->bindValue(':response', $response)
+                            ->bindValue(':datereg', $datereg)
+                            ->execute();
+                }
+            }
+            fclose($file);
+        }
+
+        return $messages;
+    } else {
+        Yii::$app->session->setFlash('error', 'ไม่พบ token ในฐานข้อมูล.');
+    }
+}
+
+    
+################################################################################################
+    public function actionListFiles()
+    {
+        $this->view->params['showSidebar'] = false;
+        $dirPath = Yii::getAlias('@webroot/uploads/fdh_opd');
+        $files = scandir($dirPath); // ใช้ scandir เพื่อแสดงรายการไฟล์ในโฟลเดอร์
+
+        return $this->render('listFiles', ['files' => $files]);
+    }
+
+    public function actionListFilesPartial()
+    {
+        $dirPath = Yii::getAlias('@webroot/uploads/fdh_opd');
+        $files = scandir($dirPath); // แสดงรายการไฟล์
+
+        // เรนเดอร์เฉพาะเนื้อหาโดยไม่ใช้ Layout
+        return $this->renderPartial('listFiles', ['files' => $files]);
+    }
+
+    public function actionReadFile($fileName)
+{
+    $filePath = Yii::getAlias('@webroot/uploads/fdh_opd/' . $fileName);
+
+    try {
+        if (file_exists($filePath)) {
+            // โหลดเนื้อหาจากไฟล์
+            $fileContent = file_get_contents($filePath);
+
+            // แปลง CRLF เป็น LF แล้วแปลง LF เป็น <br>
+            $fileContent = nl2br(Html::encode($fileContent));
+
+            // เรนเดอร์เฉพาะเนื้อหาโดยไม่ใช้ Layout
+            return $this->renderPartial('readFile', [
+                'content' => $fileContent,
+                'fileName' => $fileName
+            ]);
+        } else {
+            throw new NotFoundHttpException('File not found.');
+        }
+    } catch (Exception $e) {
+        Yii::error('Error reading file: ' . $e->getMessage());
+        throw new \yii\web\NotFoundHttpException('Error reading file.');
+    }
+}
+
+    
+    // public function actionReadFile($fileName)
+    // {
+    //     $filePath = Yii::getAlias('@webroot/uploads/fdh_opd/' . $fileName);
+
+    //     if (file_exists($filePath)) {
+    //         // โหลดเนื้อหาจากไฟล์
+    //         $fileContent = file_get_contents($filePath);
+
+    //         // เรนเดอร์เฉพาะเนื้อหาโดยไม่ใช้ Layout
+    //         return $this->renderPartial('readFile', ['content' => $fileContent]);
+    //     } else {
+    //         throw new \yii\web\NotFoundHttpException('File not found.');
+    //     }
+    // }
+    // In your controller, add an action to return the current status
+    public function actionGetVisitStatus()
+    {
+        $visits = [];
+
+        // Check session data and add it to the visits array
+        foreach ($_SESSION as $key => $value) {
+            if (strpos($key, 'visit_') === 0) { // Check if the key starts with 'visit_'
+                $visit_id = str_replace('visit_', '', $key);
+                $visits[] = [
+                    'id' => $visit_id,
+                    'status' => isset($value['status']) ? $value['status'] : 'unknown',
+                    'message' => isset($value['message']) ? $value['message'] : 'No message',
+                    'message_th' => isset($value['message_th']) ? $value['message_th'] : 'ไม่มีข้อความ',
+                ];
+            }
+        }
+
+        return $this->asJson($visits); // Return data as JSON
+    }
+    public function actionExportexcel()
+    {
+        $sql = "SELECT v.visit_id, v.pid, f.fullname,f.cid,
+        f.age_year, f.height,f.weight,f.hospmain, f.hospsub, f.symptoms,
+         f.`ผลตรวจ`,f.screen_date ,v.d_update,
+        v.response
+                FROM log_fdh_opd_ck v 
+        INNER JOIN jhcisdb.fittest f ON f.seq = v.visit_id
+                WHERE v.users = 'telemed'
+                AND v.d_update BETWEEN CURDATE() AND NOW()
+         ORDER BY v.pid
+            ";
+
+        $rawData = \yii::$app->db2->createCommand($sql)->queryAll();
+
+        //print_r($rawData);
+        try {
+            $rawData = \Yii::$app->db2->createCommand($sql)->queryAll();
+        } catch (\yii\db\Exception $e) {
+            throw new \yii\web\ConflictHttpException('sql error');
+        }
+        $dataProvider = new \yii\data\ArrayDataProvider([
+            'allModels' => $rawData,
+            'pagination' => FALSE,
+            //'pagination' => ['pagesize' => 5],
+        ]);
+
+        return $this->render('export_excel', [
+            'dataProvider' => $dataProvider,
+            'sql' => $sql,
+
+        ]);
+    }
+    public function actionRunCurl()
+    {
+		$request = Yii::$app->request;
+    $date1 = $request->get('date1', $request->post('date1'));
+    $date2 = $request->get('date2', $request->post('date2'));
+        // เริ่มต้นการตั้งค่า Flash
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $curl = curl_init();
+
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => 'https://fdh.moph.go.th/token?Action=get_moph_access_token',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            //SSL USE
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_SSL_VERIFYPEER => 0,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode([
+				'user' => 'junmane.10953',
+                'password_hash' => '3F541928B150EAC5BDE327244143DC69E00E2D73426AB038D1D422646E42D499',
+                'hospital_code' => '10953'
+            ]),
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+            ],
+        ));
+
+        $response = curl_exec($curl);  // รัน cURL และเก็บผลลัพธ์
+        $err = curl_error($curl);     // ใช้ตัวแปร $curl ที่ถูกต้อง
+        curl_close($curl);            // ปิด cURL
+
+
+        if ($err) {
+            Yii::$app->session->setFlash('error', "cURL Error: $err");
+            return $this->redirect(['index']); // เปลี่ยนให้ตรงกับหน้าเว็บที่ต้องการ
+        }
+
+        try {
+            Yii::$app->db2->createCommand()->insert('fdh_token', [
+                'token_dt' => date('Y-m-d H:i:s'),
+                'token' => $response,
+                'staff_id' => 'nim',
+            ])->execute();
+
+            Yii::$app->session->setFlash('success', 'New token created successfully');
+        } catch (Exception $e) {
+            Yii::$app->session->setFlash('error', "Database Error: " . $e->getMessage());
+        }
+
+        return $this->redirect(['index', 'date1' => $date1, 'date2' => $date2]);
+    }
+	public function actionExports()
+    {
+        $baseDirectory = 'uploads/fdh_opd/';
+        $currentDateTime = date('Ymd_His');
+        $zipFilename = $baseDirectory . 'F16_10953_Telemed' . $currentDateTime . '.zip';
+
+        // Create a new ZipArchive instance
+        $zip = new \ZipArchive();
+
+        // Open the zip file for writing
+        if ($zip->open($zipFilename, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            return 'Cannot open zip file for writing';
+        }
+
+        // Add a 'fdh_opd' folder to the zip
+        $folderInZip = 'fdh_opd/';
+        
+        // Add files to the 'fdh_opd' folder in the zip file
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($baseDirectory),
+            \RecursiveIteratorIterator::LEAVES_ONLY
+        );
+
+        foreach ($files as $file) {
+            // Skip directories (they are added automatically)
+            if (!$file->isDir()) {
+                // Get real path for current file
+                $filePath = $file->getRealPath();
+
+                // Create a relative path inside the zip file
+                $relativePath = $folderInZip . basename($filePath);
+
+                // Add the file to the archive
+                $zip->addFile($filePath, $relativePath);
+            }
+        }
+
+        // Close the zip file
+        $zip->close();
+
+        // Set the headers to force download
+        Yii::$app->response->sendFile($zipFilename, basename($zipFilename), [
+            'mimeType' => 'application/zip',
+            'inline' => false,
+        ])->send();
+
+        // Optional: Delete the zip file after sending it
+         unlink($zipFilename);
+
+        return;
+    }
+
+}

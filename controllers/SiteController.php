@@ -9,6 +9,9 @@ use yii\web\Response;
 use yii\filters\VerbFilter;
 use app\models\LoginForm;
 use app\models\ContactForm;
+use app\models\UploadCSV;
+use yii\web\UploadedFile;
+
 
 class SiteController extends Controller
 {
@@ -41,18 +44,33 @@ class SiteController extends Controller
     /**
      * {@inheritdoc}
      */
-    public function actions()
-    {
-        return [
-            'error' => [
-                'class' => 'yii\web\ErrorAction',
-            ],
-            'captcha' => [
-                'class' => 'yii\captcha\CaptchaAction',
-                'fixedVerifyCode' => YII_ENV_TEST ? 'testme' : null,
-            ],
-        ];
+     public function actions()
+{
+    return [
+        // ลบ 'error' ออก ไม่ต้องมีแล้ว
+        'captcha' => [
+            'class' => 'yii\captcha\CaptchaAction',
+            'fixedVerifyCode' => YII_ENV_TEST ? 'testme' : null,
+        ],
+    ];
+}
+
+public function actionError()
+{
+    $exception = Yii::$app->errorHandler->exception;
+    if ($exception !== null) {
+        if ($exception instanceof \yii\web\ForbiddenHttpException) {
+            return $this->render('error', [
+                'name'    => 'ไม่มีสิทธิ์เข้าถึง (#403)',
+                'message' => 'คุณไม่ได้รับอนุญาตให้ดำเนินการนี้',
+            ]);
+        }
+        return $this->render('error', [
+            'name'    => $exception->getName(),
+            'message' => $exception->getMessage(),
+        ]);
     }
+}
 
     /**
      * Displays homepage.
@@ -63,6 +81,11 @@ class SiteController extends Controller
     {
         return $this->render('index');
     }
+	public function actionInfo()
+    {
+        return $this->render('phpinfo');
+    }
+
 
     /**
      * Login action.
@@ -125,4 +148,19 @@ class SiteController extends Controller
     {
         return $this->render('about');
     }
+	
+	public function actionImport()
+    {
+        $model = new UploadCSV();
+			$filename='';
+			if (Yii::$app->request->isPost) {
+					$model->file = UploadedFile::getInstance($model, 'file');
+					if ($model->validate()) {
+						$model->file->saveAs('upload/'. $model->file->baseName.'.'.$model->file->extension);
+						$filename=$_FILES['UploadCSV']['name']['file']; //phpinfo();
+					}
+			}
+		return $this->render('import', ['model' => $model,'filename'=>$filename]);
+	}
 }
+?>

@@ -1,0 +1,238 @@
+<?php
+
+use yii\bootstrap\Html;
+use yii\helpers\Url;
+
+// $command3 = Yii::$app->db->createCommand("SELECT company FROM setting WHERE id='1'");
+// $company = $command3->queryScalar();
+//
+// $command4 = Yii::$app->db->createCommand("SELECT photo FROM setting WHERE id='1'");
+// $logo = $command4->queryScalar();
+if (Yii::$app->user->isGuest) {
+    $name='Guest';
+    $username='Guest';
+ }else{
+ $user_id = Yii::$app->user->identity->id;
+ $command3 = Yii::$app->db->createCommand("SELECT name FROM profile WHERE user_id='$user_id'");
+ $name = $command3->queryScalar();
+
+ $username = Yii::$app->user->identity->username;
+ }
+
+?>
+
+<aside class="main-sidebar">
+
+    <section class="sidebar">
+
+        <!-- Sidebar user panel -->
+        <div class="user-panel">
+            <div class="pull-left image">
+               <img src="<?= Yii::getAlias('@web') . '/images/moph.png' ?>" class="img-circle" alt="User Image">
+            </div>
+            <div class="pull-left info">
+
+                <?php if (Yii::$app->user->isGuest) { ?>
+
+                    <a href="#"><i class="fa fa-circle text-red"></i> Offline</a>
+                <?php } else { ?>
+                    <p><?= $name ?></p>
+                    <a href="#"><i class="fa fa-circle text-success"></i> Online</a>
+                <?php } ?>
+
+
+            </div>
+        </div>
+
+        <!-- search form -->
+        <form action="#" method="get" class="sidebar-form">
+            <div class="input-group">
+                <input type="text" name="q" class="form-control" placeholder="Search..." />
+                <span class="input-group-btn">
+                    <button type='submit' name='search' id='search-btn' class="btn btn-flat"><i class="fa fa-search"></i>
+                    </button>
+                </span>
+            </div>
+        </form>
+        <!-- /.search form -->
+
+        <?= dmstr\widgets\Menu::widget(
+            [
+                'options' => ['class' => 'sidebar-menu tree', 'data-widget' => 'tree'],
+                'items' => [
+                    ['label' => 'Menu', 'options' => ['class' => 'header']],
+					['label' => 'Dashboard','icon'=>'calendar text-orange' ,'url' => ['/dashboard/dashboard']],
+					['label' => 'E-Claim','icon'=>'calendar text-orange' ,'url' => ['/eclaims/eclaim']],
+					['label' => 'Update NhsoToken','icon'=>'calendar text-orange' ,'url' => ['/ntoken/index']],
+                    [
+                        'label' => 'รายงานโควิด', 'icon' => 'cog text-orange', 
+                        'items' => [
+                            ['label' => 'Epidem-atk', 'icon' => 'fas fa-play text-aqua', 'url' => ['/covid/pcr']],
+							//['label' => 'Admit-Home-Isolation', 'icon' => 'fas fa-play text-aqua', 'url' => ['/covid/sat']],
+							['label' => 'ชื่อผู้ป่วยโควิด(กุ้ง)', 'icon' => 'fas fa-play text-aqua', 'url' => ['/covid/covid']],
+							//['label' => 'Authen Code', 'icon' => 'fas fa-play text-aqua', 'url' => ['/covid/authen']],
+                            //['label' => 'MIS(หน.อั๋น)', 'icon' => 'fas fa-play text-aqua', 'url' => ['/covid/mis']],
+                            //['label' => 'OP Self', 'icon' => 'fas fa-play text-aqua', 'url' => ['/covid/opself']],
+                            //['label' => 'สรุปข้อมูลการฉีดวัคซีนรายวัน', 'icon' => 'fas fa-play text-aqua', 'url' => ['/covid/vaccine_today']],
+                        ],
+                        ],
+						[
+                        'label' => 'AuthenCode', 'icon' => 'cog text-orange', 
+                        'items' => [
+							['label' => 'FixTest', 'icon' => 'fas fa-calendar text-green', 'url' => ['/authencode/fixtest']],
+                            ['label' => 'Authen_Kiosk', 'icon' => 'fas fa-calendar text-green', 'url' => ['/authencode/kioskauthen']],
+							['label' => 'เลือกช่วงเวลา', 'icon' => 'fas fa-calendar text-green', 'url' => ['/authencode/between']],
+							//['label' => 'OP Self', 'icon' => 'fas fa-calendar text-green', 'url' => ['/authencode/opself']],
+							['label' => 'Clinic', 'icon' => 'fas fa-calendar text-green', 'url' => ['/authencode/authenclinic']],
+                        ],
+						],
+						
+					    [
+                        'label' => 'งานเคลม-EDC', 'icon' => 'cog text-yellow', 
+                        'items' => [
+                            ['label' => 'นำเข้าไฟล์ CSV ประจำวัน', 'icon' => 'fas fa-film text-aqua', 'url' => ['/edc/importcsv']],
+							['label' => 'นำเข้าไฟล์ TXT ย้อนหลัง', 'icon' => 'fas fa-film text-aqua', 'url' => ['/edc/importedc']],
+							['label' => 'ประกันสังคมนอกเครือข่าย', 'icon' => 'fas fa-film text-aqua', 'url' => ['/covid/sss']],
+							['label' => 'ประกันสังคม -ช่วงเวลา', 'icon' => 'fas fa-film text-aqua', 'url' => ['/covid/selectss']],
+                            ['label' => 'ClaimATK', 'icon' => 'fas fa-film text-aqua', 'url' => ['/covid/atk']],
+							['label' => 'EDC(ตรวจสอบประจำวัน)', 'icon' => 'fas fa-play text-aqua', 'url' => ['/edc/edctoday']],
+							['label' => 'ตรวจสอบการขอเลข EDC', 'icon' => 'fas fa-play text-aqua', 'url' => ['/edc/edctime']],
+							['label' => 'ไวรัสบี -ช่วงเวลา', 'icon' => 'fas fa-film text-aqua', 'url' => ['/covid/virusb']],
+                        ],
+						],
+						
+                         [
+                            'label' => '43แฟ้มคัพ', 'icon' => 'cog text-yellow', 
+                            'items' => [
+                                ['label' => 'แผนไทยคัพ', 'icon' => 'fas fa-film text-aqua', 'url' => 'http://m30hospital.com/planthai/web/index.php?r=thaimedcup%2Fthaimedcup'],
+                            ],
+                            ],
+						
+						['label' => 'Report-mBase', 'options' => ['class' => 'header']],
+						[
+                        'label' => 'เภสัชกรรรม', 'icon' => 'cog text-yellow', 
+                        'items' => [
+                            ['label' => 'ipd_item', 'icon' => 'fas fa-film text-aqua', 'url' => ['/pharm/ipditem']],
+							//['label' => 'RepMonth', 'icon' => 'fas fa-play text-aqua', 'url' => ['/repmonth/repmonth']],
+							//['label' => 'AdjRW', 'icon' => 'fas fa-play text-aqua', 'url' => ['/rep/adjrw']],
+                        ],
+						],
+						[
+                        'label' => 'อนามัยแม่และเด็ก', 'icon' => 'cog text-yellow', 
+                        'items' => [
+                            ['label' => 'Anc-Covid', 'icon' => 'fas fa-film text-aqua', 'url' => ['/anc/anccovid']],
+							//['label' => 'RepMonth', 'icon' => 'fas fa-play text-aqua', 'url' => ['/repmonth/repmonth']],
+							//['label' => 'AdjRW', 'icon' => 'fas fa-play text-aqua', 'url' => ['/rep/adjrw']],
+                        ],
+						],
+						
+						['label' => 'ตั้งค่าระบบ (ADMIN)', 'options' => ['class' => 'header']],
+                        [
+                            'label' => 'ตั้งค่าระบบ',
+                            'icon' => 'cog text-red',
+                            'url' => '#',
+                            'items' => [
+                                ['label' => 'จัดการผู้ใช้', 'icon' => 'fas fa-play text-aqua', 'url' => ['/user/admin'],],
+                                ['label' => 'จัดการสิทธิ์', 'icon' => 'fas fa-play text-aqua', 'url' => ['/admin'],],
+                                ['label' => 'รายงาน', 'icon' => 'fas fa-play text-aqua', 'url' => ['/report'],],
+                                ['label' => 'สร้าง Chart', 'icon' => 'fas fa-play text-aqua', 'url' => ['/chartbuilder'],],
+                            ],
+                        ],
+						/*
+					    [
+                        'label' => 'ADMIN', 'icon' => 'cog text-aqua', 
+                        'items' => [
+                            ['label' => 'อุบัติการณ์Server', 'icon' => 'fas fa-play text-aqua', 'url' => ['/rep/rep1']],
+							['label' => 'ClaimATK', 'icon' => 'fas fa-play text-aqua', 'url' => ['/covidx/atk']],
+							['label' => 'Barcode', 'icon' => 'fas fa-play text-aqua', 'url' => ['/barcode/index']],
+							//['label' => 'AdjRW', 'icon' => 'fas fa-play text-aqua', 'url' => ['/rep/adjrw']],
+                        ],
+                    ],
+					/*
+					[
+                        'label' => 'รายงานเวชระเบียน[mBase]', 'icon' => 'cog text-orange', 
+                        'items' => [
+                            ['label' => 'Rep-Admit28', 'icon' => 'fa fa-check-square-o text-aqua', 'url' => ['/readmit/readmit']],
+							['label' => 'Rep-Visit48', 'icon' => 'fa fa-check-square-o text-aqua', 'url' => ['/readmit/revisit']],
+							['label' => 'Unplan-Refer', 'icon' => 'fa fa-check-square-o text-aqua', 'url' => ['/readmit/unplan']],
+                        ],
+                    ],
+					[
+                        'label' => 'Refers', 'icon' => 'cog text-orange', 
+                        'items' => [
+                            ['label' => 'Smart-refers', 'icon' => 'fa fa-check-square-o text-aqua', 'url' => ['/repmbase/refers']],
+							//['label' => 'Rep-Visit48', 'icon' => 'fa fa-check-square-o text-aqua', 'url' => ['/readmit/revisit']],
+							//['label' => 'Unplan-Refer', 'icon' => 'fa fa-check-square-o text-aqua', 'url' => ['/readmit/unplan']],
+                        ],
+                    ],
+					
+                    // ['label' => 'Login', 'url' => ['/user/security/login'], 'visible' => Yii::$app->user->isGuest],
+					/*
+                    [
+                        'label' => 'จัดการเว็บไซต์', 'icon' => 'cog', 'visible' => !Yii::$app->user->isGuest,
+                        'items' => [
+                            ['label' => 'หมวดหมู่หลัก', 'icon' => 'fas fa-play text-aqua', 'url' => ['/hacategory/index'], 'visible' => !Yii::$app->user->isGuest],
+                            ['label' => 'หมวดหมู่ย่อย', 'icon' => 'fas fa-play text-aqua', 'url' => ['/group/index'], 'visible' => !Yii::$app->user->isGuest],
+                            ['label' => 'อัพโหลดไฟล์', 'icon' => 'fas fa-play text-aqua', 'url' => ['/hadocuments/admin'], 'visible' => !Yii::$app->user->isGuest],
+                        ],
+                    ],
+					*/
+					[
+                        'label' => 'นำเข้าไฟล์', 'icon' => 'cog text-orange', 
+                        'items' => [
+							 ['label' => 'นำเข้าไฟล์Authencode', 'icon' => 'fas fa-play text-aqua', 'url' => ['authenkiosk/imports']],
+                            ['label' => 'นำเข้าไฟล์excel', 'icon' => 'fas fa-play text-aqua', 'url' => ['repimport/imports']],
+							['label' => 'นำเข้าไฟล์csv', 'icon' => 'fas fa-play text-aqua', 'url' => ['site/import']],
+							['label' => 'Upload excel', 'icon' => 'fas fa-play text-aqua', 'url' => ['import/index']],
+							['label' => 'นำเข้าไฟล์excelทดสอบ', 'icon' => 'fas fa-play text-aqua', 'url' => ['repimport/index']],
+                        ],
+                    ],
+                    // [
+                    //     'label' => 'จัดการเว็บไซต์', 'icon' => 'cog', 'visible' => !Yii::$app->user->isGuest,
+                    //     'items' => [
+                    //         ['label' => 'หมวดหมู่', 'icon' => 'circle-o text-aqua', 'url' => ['/newscategory/index'], 'visible' => !Yii::$app->user->isGuest],
+                    //         ['label' => 'หัวข้อ', 'icon' => 'circle-o text-aqua', 'url' => ['/news/admin'], 'visible' => !Yii::$app->user->isGuest],
+                    //     ],
+                    // ],
+                    Yii::$app->user->isGuest ?
+                        ['label' => 'เข้าสู่ระบบ', 'icon' => 'sign-in text-green', 'url' => ['/user/security/login']] : [
+                            'label' => 'ยินดีต้อนรับ (' . Yii::$app->user->identity->username . ')',
+                            'items' => [
+                                ['label' => 'โพรไฟล์', 'icon' => 'user', 'url' => ['/user/profile']],
+                                ['label' => 'จัดการผู้ใช้', 'icon' => 'user-secret', 'url' => ['/user/admin/index']],
+                            ]
+                        ],
+                ],
+            ]
+			
+        ) ?>
+        <ul class="sidebar-menu tree" data-widget="tree">
+            <!-- <li class="header"></li> -->
+            <?php
+            if (Yii::$app->user->isGuest) {
+                ?>
+                <li>
+                    <!-- <a href="<?= Url::to('index.php?r=user/security/login') ?>">
+                                    <i class="fa fa-sign-in text-green"></i> <span>เข้าสูระบบ</span>
+                                </a> -->
+                </li>
+            <?php } else { ?>
+                <li>
+                    <?php
+                    echo Html::a(
+                        '<i class="fa fa-sign-out text-red"></i>ออกจากระบบ',
+                        ['/user/security/logout'],
+                        [
+                            'data' => [
+                                'icon' => 'fa fa-sign-out text-red',
+                                'method' => 'post',
+                            ],
+                        ]
+                    );
+                    ?>
+                </li>
+            <?php } ?>
+        </ul>
+    </section>
+
+</aside>

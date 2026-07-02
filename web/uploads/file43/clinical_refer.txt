@@ -1,0 +1,1 @@
+hospcode|referid|referid_province|datetime_assess|clinicalcode|clinicalname|clinicalvalue|clinicalresult|d_update
